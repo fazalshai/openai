@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPT Chat</title>
+<style>
+  :root {
+    --bg: #f7f7f8; --panel: #ffffff; --text: #1f2328; --muted: #6b7280;
+    --border: #e5e7eb; --user: #2563eb; --user-text: #ffffff; --code: #f3f4f6;
+    --accent: #10a37f; --danger: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #171a21; --text: #e6e8eb; --muted: #9aa3af;
+      --border: #2a2f3a; --code: #0b0d11;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .actions { display: flex; gap: 8px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); padding: 6px 12px;
+  }
+  button:hover { border-color: var(--muted); }
+  .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #chat { flex: 1; overflow-y: auto; padding: 16px; }
+  .wrap { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .msg { padding: 10px 14px; border-radius: 12px; max-width: 85%; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user); color: var(--user-text); }
+  .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
+  .msg.error { align-self: center; color: var(--danger); background: transparent; font-size: 14px; max-width: 100%; }
+  .msg pre { background: var(--code); padding: 10px; border-radius: 8px; overflow-x: auto; white-space: pre; }
+  .msg code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .msg :not(pre) > code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  .empty { text-align: center; color: var(--muted); margin-top: 18vh; }
+  .empty h2 { color: var(--text); font-weight: 600; margin-bottom: 4px; }
+  form#form { padding: 12px 16px 16px; background: var(--bg); }
+  .box {
+    max-width: 780px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 8px;
+  }
+  textarea {
+    flex: 1; resize: none; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; max-height: 200px; padding: 6px;
+  }
+  .cursor::after { content: "▍"; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  dialog {
+    border: 1px solid var(--border); border-radius: 14px; background: var(--panel); color: var(--text);
+    padding: 20px; width: min(440px, calc(100vw - 32px));
+  }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { margin: 0 0 4px; font-size: 18px; }
+  dialog p.note { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+  dialog input[type=password], dialog input[type=text] {
+    width: 100%; font: inherit; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  }
+  .check { display: flex; align-items: center; gap: 8px; font-weight: 400; margin-top: 14px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; }
+  .row .right { display: flex; gap: 8px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>GPT Chat</h1>
+  <div class="actions">
+    <button id="openSettings" type="button">API key</button>
+    <button id="newChat" type="button">New chat</button>
+  </div>
+</header>
+
+<main id="chat"><div class="wrap" id="messages"></div></main>
+
+<form id="form">
+  <div class="box">
+    <textarea id="input" rows="1" placeholder="Message GPT…  (Enter to send, Shift+Enter for new line)"></textarea>
+    <button id="send" class="primary" type="submit">Send</button>
+  </div>
+</form>
+
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <h2>Your OpenAI API key</h2>
+    <p class="note">
+      The key is sent only to OpenAI, straight from your browser. It is never uploaded to this site.
+      Get one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>.
+    </p>
+    <label for="keyInput">API key</label>
+    <input id="keyInput" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+    <label for="modelInput">Model</label>
+    <input id="modelInput" type="text" placeholder="gpt-4o-mini" spellcheck="false">
+    <label class="check"><input id="remember" type="checkbox" checked> Remember on this device</label>
+    <div class="row">
+      <button type="button" id="forget">Remove key</button>
+      <div class="right">
+        <button type="button" id="cancel">Cancel</button>
+        <button type="submit" class="primary" id="saveKey">Save</button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const chat = $("chat"), list = $("messages"), input = $("input"), send = $("send");
+  const DEFAULT_MODEL = "gpt-4o-mini";
+  let history = [];
+  let controller = null;
+
+  // Storage that never throws (private windows, blocked storage).
+  const safe = (fn, fallback) => { try { return fn(); } catch { return fallback; } };
+  const settings = {
+    key() { return safe(() => localStorage.getItem("openai-key") || sessionStorage.getItem("openai-key"), null) || ""; },
+    model() { return safe(() => localStorage.getItem("openai-model"), null) || DEFAULT_MODEL; },
+    save(key, model, remember) {
+      safe(() => { localStorage.removeItem("openai-key"); sessionStorage.removeItem("openai-key"); });
+      if (key) safe(() => (remember ? localStorage : sessionStorage).setItem("openai-key", key));
+      safe(() => localStorage.setItem("openai-model", model || DEFAULT_MODEL));
+    },
+    forget() { safe(() => { localStorage.removeItem("openai-key"); sessionStorage.removeItem("openai-key"); }); },
+  };
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // Tiny, safe markdown: code blocks, inline code, bold.
+  function render(text) {
+    return escapeHtml(text)
+      .split(/```/)
+      .map((part, i) => i % 2 === 1
+        ? "<pre><code>" + part.replace(/^[\w+-]*\n/, "") + "</code></pre>"
+        : part.replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>"))
+      .join("");
+  }
+
+  function showEmpty() {
+    const hasKey = !!settings.key();
+    list.innerHTML = '<div class="empty" id="empty"><h2>How can I help?</h2><p>' +
+      (hasKey ? "Type a message below to start." : 'Click <strong>API key</strong> (top right) and paste your OpenAI key to start.') +
+      "</p></div>";
+  }
+
+  function addBubble(role, text) {
+    $("empty")?.remove();
+    const div = document.createElement("div");
+    div.className = "msg " + role;
+    div.innerHTML = role === "assistant" ? render(text) : escapeHtml(text);
+    list.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+  }
+
+  async function ask() {
+    const text = input.value.trim();
+    if (!text || controller) return;
+    const key = settings.key();
+    if (!key) { openSettings(); return; }
+
+    input.value = ""; autosize();
+    history.push({ role: "user", content: text });
+    addBubble("user", text);
+
+    const bubble = addBubble("assistant", "");
+    bubble.classList.add("cursor");
+    send.textContent = "Stop";
+    controller = new AbortController();
+    let reply = "";
+
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        body: JSON.stringify({ model: settings.model(), messages: history.slice(-40), stream: true }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(friendlyError(res.status, await res.text()));
+
+      // Read OpenAI's server-sent events and append each piece of text.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          const data = t.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+            if (delta) reply += delta;
+          } catch {}
+        }
+        bubble.innerHTML = render(reply);
+        chat.scrollTop = chat.scrollHeight;
+      }
+      history.push({ role: "assistant", content: reply });
+    } catch (err) {
+      if (err.name === "AbortError") {
+        if (reply) history.push({ role: "assistant", content: reply });
+      } else {
+        if (!reply) bubble.remove();
+        addBubble("error", err.message === "Failed to fetch" ? "Could not reach OpenAI. Check your internet connection." : err.message);
+        if (history.at(-1)?.role === "user") history.pop();
+      }
+    } finally {
+      bubble.classList.remove("cursor");
+      controller = null; send.textContent = "Send"; input.focus();
+    }
+  }
+
+  function friendlyError(status, body) {
+    let msg = body;
+    try { msg = JSON.parse(body).error?.message || body; } catch {}
+    if (status === 401) return "Your API key was rejected. Click \"API key\" to fix it. (" + msg + ")";
+    if (status === 429) return "OpenAI rate limit or no credit left: " + msg;
+    if (status === 404) return "Model not available for your key: " + msg;
+    return "Error " + status + ": " + msg;
+  }
+
+  function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; }
+
+  // Settings dialog
+  const dlg = $("settings");
+  function openSettings() {
+    $("keyInput").value = settings.key();
+    $("modelInput").value = settings.model();
+    dlg.showModal();
+    $("keyInput").focus();
+  }
+  $("openSettings").addEventListener("click", openSettings);
+  $("cancel").addEventListener("click", () => dlg.close());
+  $("settingsForm").addEventListener("submit", () => {
+    settings.save($("keyInput").value.trim(), $("modelInput").value.trim(), $("remember").checked);
+    if (!history.length) showEmpty();
+    input.focus();
+  });
+  $("forget").addEventListener("click", () => {
+    settings.forget(); $("keyInput").value = ""; dlg.close();
+    if (!history.length) showEmpty();
+  });
+
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (controller) controller.abort(); else ask();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!controller) ask(); }
+  });
+  input.addEventListener("input", autosize);
+  $("newChat").addEventListener("click", () => { controller?.abort(); history = []; showEmpty(); input.focus(); });
+
+  showEmpty();
+  if (!settings.key()) openSettings(); else input.focus();
+</script>
+</body>
+</html>
