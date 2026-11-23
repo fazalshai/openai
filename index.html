@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GPT Chat</title>
+<title>AI Chat</title>
 <style>
   :root {
     --bg: #f7f7f8; --panel: #ffffff; --text: #1f2328; --muted: #6b7280;
@@ -34,6 +34,11 @@
     background: var(--panel); color: var(--text); padding: 6px 12px;
   }
   button:hover { border-color: var(--muted); }
+  select {
+    font: inherit; border-radius: 8px; border: 1px solid var(--border); background: var(--panel);
+    color: var(--text); padding: 6px 8px; max-width: 46vw;
+  }
+  .thinking { color: var(--muted); font-style: italic; }
   .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   #chat { flex: 1; overflow-y: auto; padding: 16px; }
   .wrap { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
@@ -74,12 +79,42 @@
   .row { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; }
   .row .right { display: flex; gap: 8px; }
   a { color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .model-chip { display: flex; align-items: center; gap: 8px; border-radius: 22px; min-width: 0; }
+  #currentModel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+  #currentEffort, .muted { color: var(--muted); font-size: 13px; }
+  #modelDialog { width: min(500px, calc(100vw - 24px)); }
+  dialog select { width: 100%; max-width: none; }
+  .dialog-heading, .field-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .field-heading label { margin: 12px 0; }
+  #modelStatus { min-height: 40px; margin: 8px 0; overflow-wrap: anywhere; }
+  #modelStatus.error { color: var(--danger); }
+  .effort-box { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 18px; }
+  .effort-box label { margin-top: 0; }
+  #effortRange { width: 100%; accent-color: var(--text); margin: 14px 0 4px; }
+  .scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  #effortNote { margin-bottom: 0; }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; font-size: 13px; }
+  #useCustomModel { margin-top: 8px; }
+  .composer-note { text-align: center; font-size: 12px; color: var(--muted); margin: 7px auto 0; }
+  @media (max-width: 600px) {
+    header { flex-wrap: wrap; padding: 10px; }
+    header .actions { width: 100%; flex-wrap: wrap; }
+    .model-chip { flex: 1; }
+    #currentModel { max-width: 44vw; }
+    #currentEffort { display: none; }
+    .msg { max-width: 95%; }
+    dialog { padding: 16px; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>GPT Chat</h1>
+  <h1>AI Chat</h1>
   <div class="actions">
+    <button id="openModels" class="model-chip" type="button" aria-haspopup="dialog" aria-controls="modelDialog"><span aria-hidden="true">✦</span><span id="currentModel">Choose a model</span><span id="currentEffort">Default</span><span aria-hidden="true">▾</span></button>
     <button id="openSettings" type="button">API key</button>
     <button id="newChat" type="button">New chat</button>
   </div>
@@ -89,23 +124,41 @@
 
 <form id="form">
   <div class="box">
-    <textarea id="input" rows="1" placeholder="Message GPT…  (Enter to send, Shift+Enter for new line)"></textarea>
+    <textarea id="input" rows="1" aria-label="Message" placeholder="Message…  (Enter to send, Shift+Enter for new line)"></textarea>
     <button id="send" class="primary" type="submit">Send</button>
   </div>
+  <p class="composer-note" id="chatContext">Choose your provider and model to start.</p>
 </form>
 
-<dialog id="settings">
+<dialog id="modelDialog" aria-labelledby="modelTitle">
+  <div class="dialog-heading"><h2 id="modelTitle">Model &amp; effort</h2><button id="closeModels" type="button" aria-label="Close model picker">✕</button></div>
+  <label for="providerSelect">Provider</label>
+  <select id="providerSelect"><option value="openai">OpenAI · GPT</option><option value="anthropic">Anthropic · Claude</option></select>
+  <div class="field-heading"><label for="modelSelect">Model</label><button id="refreshModels" type="button">Refresh models</button></div>
+  <select id="modelSelect" aria-describedby="modelStatus"><option value="">Add your API key to load models</option></select>
+  <p id="modelStatus" class="muted" role="status" aria-live="polite"></p>
+  <button id="pickerKey" type="button">Add API key</button>
+  <div class="effort-box">
+    <div class="field-heading"><label for="effortSelect">Reasoning effort</label><span aria-hidden="true">✦</span></div>
+    <select id="effortSelect" aria-describedby="effortNote"></select>
+    <input id="effortRange" type="range" min="0" max="0" value="0" step="1" aria-label="Reasoning effort slider">
+    <div class="scale"><span>Less thinking</span><span>More thinking</span></div>
+    <p id="effortNote" class="muted">Select a model to see its effort options.</p>
+  </div>
+  <details><summary>Enter a model ID manually</summary><label for="customModel">Exact API model ID</label><input id="customModel" type="text" placeholder="For example, gpt-6-astra" autocomplete="off" spellcheck="false"><button id="useCustomModel" type="button">Use this model</button><p class="muted">Your API key must have access to this model. Unknown models use their default effort.</p></details>
+  <p class="muted">Each provider has its own key and chat history. API usage is billed to your provider account.</p>
+  <div class="row"><button id="doneModels" type="button" class="primary">Done</button></div>
+</dialog>
+
+<dialog id="settings" aria-labelledby="keyTitle">
   <form method="dialog" id="settingsForm">
-    <h2>Your OpenAI API key</h2>
-    <p class="note">
-      The key is sent only to OpenAI, straight from your browser. It is never uploaded to this site.
-      Get one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>.
-    </p>
+    <h2 id="keyTitle">Your OpenAI API key</h2>
+    <p class="note" id="keyNote"></p>
+    <a id="keyLink" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">Get an API key</a>
     <label for="keyInput">API key</label>
     <input id="keyInput" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
-    <label for="modelInput">Model</label>
-    <input id="modelInput" type="text" placeholder="gpt-4o-mini" spellcheck="false">
-    <label class="check"><input id="remember" type="checkbox" checked> Remember on this device</label>
+    <label class="check"><input id="remember" type="checkbox"> Remember on this device</label>
+    <p class="muted">Otherwise, keep it for this tab only. Saved keys can be read by scripts on this site; use a trusted device.</p>
     <div class="row">
       <button type="button" id="forget">Remove key</button>
       <div class="right">
@@ -116,163 +169,6 @@
   </form>
 </dialog>
 
-<script>
-  const $ = (id) => document.getElementById(id);
-  const chat = $("chat"), list = $("messages"), input = $("input"), send = $("send");
-  const DEFAULT_MODEL = "gpt-4o-mini";
-  let history = [];
-  let controller = null;
-
-  // Storage that never throws (private windows, blocked storage).
-  const safe = (fn, fallback) => { try { return fn(); } catch { return fallback; } };
-  const settings = {
-    key() { return safe(() => localStorage.getItem("openai-key") || sessionStorage.getItem("openai-key"), null) || ""; },
-    model() { return safe(() => localStorage.getItem("openai-model"), null) || DEFAULT_MODEL; },
-    save(key, model, remember) {
-      safe(() => { localStorage.removeItem("openai-key"); sessionStorage.removeItem("openai-key"); });
-      if (key) safe(() => (remember ? localStorage : sessionStorage).setItem("openai-key", key));
-      safe(() => localStorage.setItem("openai-model", model || DEFAULT_MODEL));
-    },
-    forget() { safe(() => { localStorage.removeItem("openai-key"); sessionStorage.removeItem("openai-key"); }); },
-  };
-
-  function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  }
-
-  // Tiny, safe markdown: code blocks, inline code, bold.
-  function render(text) {
-    return escapeHtml(text)
-      .split(/```/)
-      .map((part, i) => i % 2 === 1
-        ? "<pre><code>" + part.replace(/^[\w+-]*\n/, "") + "</code></pre>"
-        : part.replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>"))
-      .join("");
-  }
-
-  function showEmpty() {
-    const hasKey = !!settings.key();
-    list.innerHTML = '<div class="empty" id="empty"><h2>How can I help?</h2><p>' +
-      (hasKey ? "Type a message below to start." : 'Click <strong>API key</strong> (top right) and paste your OpenAI key to start.') +
-      "</p></div>";
-  }
-
-  function addBubble(role, text) {
-    $("empty")?.remove();
-    const div = document.createElement("div");
-    div.className = "msg " + role;
-    div.innerHTML = role === "assistant" ? render(text) : escapeHtml(text);
-    list.appendChild(div);
-    chat.scrollTop = chat.scrollHeight;
-    return div;
-  }
-
-  async function ask() {
-    const text = input.value.trim();
-    if (!text || controller) return;
-    const key = settings.key();
-    if (!key) { openSettings(); return; }
-
-    input.value = ""; autosize();
-    history.push({ role: "user", content: text });
-    addBubble("user", text);
-
-    const bubble = addBubble("assistant", "");
-    bubble.classList.add("cursor");
-    send.textContent = "Stop";
-    controller = new AbortController();
-    let reply = "";
-
-    try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
-        body: JSON.stringify({ model: settings.model(), messages: history.slice(-40), stream: true }),
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error(friendlyError(res.status, await res.text()));
-
-      // Read OpenAI's server-sent events and append each piece of text.
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop();
-        for (const line of lines) {
-          const t = line.trim();
-          if (!t.startsWith("data:")) continue;
-          const data = t.slice(5).trim();
-          if (data === "[DONE]") continue;
-          try {
-            const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-            if (delta) reply += delta;
-          } catch {}
-        }
-        bubble.innerHTML = render(reply);
-        chat.scrollTop = chat.scrollHeight;
-      }
-      history.push({ role: "assistant", content: reply });
-    } catch (err) {
-      if (err.name === "AbortError") {
-        if (reply) history.push({ role: "assistant", content: reply });
-      } else {
-        if (!reply) bubble.remove();
-        addBubble("error", err.message === "Failed to fetch" ? "Could not reach OpenAI. Check your internet connection." : err.message);
-        if (history.at(-1)?.role === "user") history.pop();
-      }
-    } finally {
-      bubble.classList.remove("cursor");
-      controller = null; send.textContent = "Send"; input.focus();
-    }
-  }
-
-  function friendlyError(status, body) {
-    let msg = body;
-    try { msg = JSON.parse(body).error?.message || body; } catch {}
-    if (status === 401) return "Your API key was rejected. Click \"API key\" to fix it. (" + msg + ")";
-    if (status === 429) return "OpenAI rate limit or no credit left: " + msg;
-    if (status === 404) return "Model not available for your key: " + msg;
-    return "Error " + status + ": " + msg;
-  }
-
-  function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; }
-
-  // Settings dialog
-  const dlg = $("settings");
-  function openSettings() {
-    $("keyInput").value = settings.key();
-    $("modelInput").value = settings.model();
-    dlg.showModal();
-    $("keyInput").focus();
-  }
-  $("openSettings").addEventListener("click", openSettings);
-  $("cancel").addEventListener("click", () => dlg.close());
-  $("settingsForm").addEventListener("submit", () => {
-    settings.save($("keyInput").value.trim(), $("modelInput").value.trim(), $("remember").checked);
-    if (!history.length) showEmpty();
-    input.focus();
-  });
-  $("forget").addEventListener("click", () => {
-    settings.forget(); $("keyInput").value = ""; dlg.close();
-    if (!history.length) showEmpty();
-  });
-
-  $("form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    if (controller) controller.abort(); else ask();
-  });
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!controller) ask(); }
-  });
-  input.addEventListener("input", autosize);
-  $("newChat").addEventListener("click", () => { controller?.abort(); history = []; showEmpty(); input.focus(); });
-
-  showEmpty();
-  if (!settings.key()) openSettings(); else input.focus();
-</script>
+<script src="./app.js" defer></script>
 </body>
 </html>
