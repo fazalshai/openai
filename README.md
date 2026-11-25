@@ -1,5 +1,7 @@
 # AI Chat
 
+**Want an agent that can work on your computer?** [Download Desk Agent for Windows](https://fazalshai.github.io/openai/desktop.html). The [desktop preview](desktop/README.md) supports both OpenAI and Claude with file tools, approved terminal commands and a task browser. Each person brings their own API key.
+
 A static chat website for GitHub Pages. Choose **OpenAI or Claude**, select an API model, and adjust reasoning effort where supported. No backend or environment variables are needed for accounts that permit direct browser API requests.
 
 ## Use it
